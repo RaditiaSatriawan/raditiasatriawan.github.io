@@ -1,0 +1,329 @@
+<!DOCTYPE html>
+<html lang="id">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>Panduan Definitif: Penyiapan Kluster Fisik Spark & Hadoop</title>
+    <style>
+        body {
+            font-family: 'Segoe UI', Roboto, 'Helvetica Neue', Arial, sans-serif;
+            line-height: 1.6;
+            margin: 0 auto;
+            max-width: 900px;
+            padding: 20px;
+            background-color: #f9f9f9;
+            color: #333;
+        }
+        h1, h2, h3 {
+            color: #2c3e50;
+            border-bottom: 2px solid #27ae60;
+            padding-bottom: 10px;
+        }
+        h1 { font-size: 2.5em; text-align: center; }
+        h2 { font-size: 2em; margin-top: 40px; }
+        h3 { font-size: 1.5em; border-bottom: 1px dotted #ccc; }
+        code {
+            background-color: #ecf0f1;
+            padding: 2px 6px;
+            border-radius: 4px;
+            font-family: 'Consolas', 'Courier New', monospace;
+            font-size: 0.9em;
+        }
+        pre {
+            background-color: #2c3e50;
+            color: #ecf0f1;
+            padding: 15px;
+            border-radius: 5px;
+            overflow-x: auto;
+            white-space: pre-wrap;
+            word-wrap: break-word;
+        }
+        pre code {
+            background-color: transparent;
+            padding: 0;
+        }
+        .note {
+            background-color: #e8f6fd;
+            border-left: 5px solid #3498db;
+            padding: 15px;
+            margin: 20px 0;
+        }
+        .warning {
+            background-color: #fdf3e8;
+            border-left: 5px solid #e67e22;
+            padding: 15px;
+            margin: 20px 0;
+        }
+        .error-box {
+            background-color: #fbeae5;
+            border-left: 5px solid #e74c3c;
+            padding: 1px 15px;
+            margin: 20px 0;
+        }
+        .filename {
+            color: #c0392b;
+            font-weight: bold;
+        }
+        .location-tag {
+            display: inline-block;
+            background-color: #95a5a6;
+            color: white;
+            padding: 3px 8px;
+            border-radius: 4px;
+            font-size: 0.8em;
+            margin-bottom: 10px;
+        }
+    </style>
+</head>
+<body>
+
+    <h1>Panduan Definitif: Penyiapan Kluster Fisik Spark & Hadoop</h1>
+    <p style="text-align: center;"><strong>Disusun pada:</strong> Minggu, 17 Agustus 2025</p>
+
+    <div class="note">
+        Dokumen ini adalah panduan "dari nol" yang paling detail untuk membangun kluster komputasi 3-node (1 Master, 2 Slave) menggunakan PC fisik dan Ubuntu. Arsitektur yang digunakan adalah satu PC Master yang berfungsi sebagai Gateway Internet. Panduan ini menyertakan semua perintah, konfigurasi, dan solusi untuk error yang umum terjadi.
+    </div>
+
+    <h2>Daftar Isi</h2>
+    <ol>
+        <li><a href="#fase1">Fase 1: Persiapan Fisik & Jaringan Dasar</a></li>
+        <li><a href="#fase2">Fase 2: Instalasi Perangkat Lunak Inti</a></li>
+        <li><a href="#fase3">Fase 3: Konfigurasi Terpusat di Master (Sangat Detail)</a></li>
+        <li><a href="#fase4">Fase 4: Propagasi Konfigurasi & Finalisasi Kluster</a></li>
+        <li><a href="#fase5">Fase 5: Prosedur Operasional (Start/Stop) & Alias</a></li>
+    </ol>
+
+    <h2 id="fase1">Fase 1: Persiapan Fisik & Jaringan Dasar</h2>
+    <p>Fondasi jaringan yang benar adalah kunci keberhasilan kluster.</p>
+    
+    <h3>1.1. Persiapan Awal</h3>
+    <ul>
+        <li><b>Koneksi Fisik:</b> Hubungkan 1 PC Master dan 2 PC Slave ke <b>Network Switch</b> yang sama menggunakan kabel LAN.</li>
+        <li><b>Instalasi OS:</b> Instal <b>Ubuntu Desktop 24.04 LTS</b> di ketiga PC (pilih `Minimal installation`, tanpa LVM).</li>
+        <li><b>Koneksi Internet Master:</b> Hubungkan PC Master ke internet (misal: WiFi Undiksha Harmoni).</li>
+    </ul>
+    
+    <h3>1.2. Konfigurasi Identitas Unik</h3>
+    <p>Setiap PC harus memiliki nama unik. Jalankan perintah yang sesuai di setiap PC.</p>
+    <p><span class="location-tag">DI PC MASTER</span></p>
+    <pre><code>sudo hostnamectl set-hostname master
+sudo reboot</code></pre>
+    <p><span class="location-tag">DI PC SLAVE 1</span></p>
+    <pre><code>sudo hostnamectl set-hostname slave01
+sudo reboot</code></pre>
+    <p><span class="location-tag">DI PC SLAVE 2</span></p>
+    <pre><code>sudo hostnamectl set-hostname slave02
+sudo reboot</code></pre>
+
+    <h3>1.3. Mengubah Master menjadi Gateway Jaringan</h3>
+    <p><span class="location-tag">DI PC MASTER</span></p>
+    <ol>
+        <li>Buka <b>Settings &rarr; Network</b>.</li>
+        <li>Klik ikon roda gigi (⚙️) di sebelah koneksi <b>Wired</b>.</li>
+        <li>Pilih tab <b>IPv4</b> dan ubah "IPv4 Method" menjadi <b>"Shared to other computers"</b>, lalu klik <b>Apply</b>.</li>
+        <li>Verifikasi IP Master di terminal: <code>ip a</code>. Alamat IP untuk koneksi kabelnya (misal: `eth0`) seharusnya adalah <code>10.42.0.1</code>. Ini adalah gateway untuk para slave.</li>
+    </ol>
+
+    <h3>1.4. Konfigurasi IP Statis di Node Slave</h3>
+    <p>Lakukan ini di setiap PC Slave untuk memastikan alamat IP mereka tidak pernah berubah.</p>
+    <p><span class="location-tag">DI PC SLAVE 1</span></p>
+    <pre><code>sudo nano /etc/netplan/01-network-manager-all.yaml</code></pre>
+    <p>Hapus semua isinya dan ganti dengan ini (sesuaikan `enp4s0` jika nama antarmuka berbeda):</p>
+    <pre><code>network:
+  version: 2
+  renderer: NetworkManager
+  ethernets:
+    enp4s0:
+      dhcp4: no
+      addresses: [10.42.0.2/24]
+      routes:
+        - to: default
+          via: 10.42.0.1
+      nameservers:
+        addresses: [10.42.0.1, 8.8.8.8]</code></pre>
+    <pre><code>sudo netplan apply</code></pre>
+    
+    <p><span class="location-tag">DI PC SLAVE 2</span></p>
+    <p>Lakukan hal yang sama, tetapi gunakan IP <code>10.42.0.3</code>.</p>
+    <pre><code>network:
+  version: 2
+  renderer: NetworkManager
+  ethernets:
+    enp4s0:
+      dhcp4: no
+      addresses: [10.42.0.3/24]
+      routes:
+        - to: default
+          via: 10.42.0.1
+      nameservers:
+        addresses: [10.42.0.1, 8.8.8.8]</code></pre>
+    <pre><code>sudo netplan apply</code></pre>
+
+    <h3>1.5. Update File `/etc/hosts` di Semua Node</h3>
+    <p><span class="location-tag">DI SEMUA TIGA PC (MASTER, SLAVE01, SLAVE02)</span></p>
+    <p>Edit file <code class="filename">/etc/hosts</code> agar isinya persis seperti ini:</p>
+    <pre><code>sudo nano /etc/hosts</code></pre>
+    <pre><code>127.0.0.1       localhost
+10.42.0.1       master
+10.42.0.2       slave01
+10.42.0.3       slave02</code></pre>
+
+    <h2 id="fase2">Fase 2: Instalasi Perangkat Lunak Inti</h2>
+    <p><span class="location-tag">DI SEMUA TIGA PC (MASTER, SLAVE01, SLAVE02)</span></p>
+    <p>Jalankan semua perintah berikut di setiap PC. Internet didapatkan dari koneksi yang dibagikan oleh master.</p>
+    
+    <h3>2.1. Instalasi Java</h3>
+    <pre><code>sudo add-apt-repository ppa:linuxuprising/java -y
+sudo apt update
+sudo apt install openjdk-8-jdk-headless -y
+java -version</code></pre>
+
+    <h3>2.2. Instalasi Pustaka Python</h3>
+    <pre><code>sudo apt install python3-numpy python3-pandas -y</code></pre>
+
+    <h3>2.3. Instalasi SSH Server</h3>
+    <pre><code>sudo apt install openssh-server -y</code></pre>
+    
+    <h3>2.4. Instalasi Spark & Hadoop</h3>
+    <p>Jalankan perintah ini di setiap PC untuk mengunduh, mengekstrak, dan memindahkan perangkat lunak.</p>
+    <pre><code># Pindah ke direktori home
+cd ~
+
+# Unduh Spark
+wget https://archive.apache.org/dist/spark/spark-3.5.1/spark-3.5.1-bin-hadoop3.tgz
+# Ekstrak Spark
+tar xvf spark-3.5.1-bin-hadoop3.tgz
+# Pindahkan Spark ke /opt/
+sudo mv spark-3.5.1-bin-hadoop3 /opt/spark
+
+# Unduh Hadoop
+wget https://archive.apache.org/dist/hadoop/common/hadoop-3.3.6/hadoop-3.3.6.tar.gz
+# Ekstrak Hadoop
+tar xvf hadoop-3.3.6.tar.gz
+# Pindahkan Hadoop ke /opt/
+sudo mv hadoop-3.3.6 /opt/hadoop</code></pre>
+
+    <h2 id="fase3">Fase 3: Konfigurasi Terpusat di Master (Sangat Detail)</h2>
+    <div class="note">Semua konfigurasi di fase ini hanya perlu dilakukan di PC <b>Master</b>. Nanti kita akan menyalinnya ke para slave.</div>
+
+    <h3>3.1. Konfigurasi Variabel Lingkungan</h3>
+    <p><span class="location-tag">DI PC MASTER</span></p>
+    <p>Perintah: <code>nano ~/.bashrc</code>. Tambahkan semua baris ini di bagian paling bawah file.</p>
+    <pre><code># SPARK & HADOOP ENV VARIABLES
+export SPARK_HOME=/opt/spark
+export HADOOP_HOME=/opt/hadoop
+export JAVA_HOME=/usr/lib/jvm/java-8-openjdk-amd64
+export HADOOP_CONF_DIR=$HADOOP_HOME/etc/hadoop
+export PATH=$PATH:$SPARK_HOME/bin:$HADOOP_HOME/bin:$HADOOP_HOME/sbin</code></pre>
+    <p>Simpan file lalu jalankan <code>source ~/.bashrc</code>.</p>
+    
+    <h3>3.2. Konfigurasi File-File Hadoop</h3>
+    <p><span class="location-tag">DI PC MASTER</span></p>
+    <p>Buat direktori data: </p>
+    <pre><code>sudo mkdir -p /opt/hadoop-data/nameNode
+sudo mkdir -p /opt/hadoop-data/dataNode
+sudo chown $(whoami):$(whoami) -R /opt/hadoop-data</code></pre>
+    
+    <p><b>File:</b> <code class="filename">/opt/hadoop/etc/hadoop/hadoop-env.sh</code><br>Perintah: <code>nano /opt/hadoop/etc/hadoop/hadoop-env.sh</code><br>Tambahkan baris ini di bagian atas:</p>
+    <pre><code>export JAVA_HOME=/usr/lib/jvm/java-8-openjdk-amd64</code></pre>
+
+    <p><b>File:</b> <code class="filename">/opt/hadoop/etc/hadoop/core-site.xml</code><br>Perintah: <code>nano /opt/hadoop/etc/hadoop/core-site.xml</code><br>Ganti isinya dengan:</p>
+    <pre><code>&lt;configuration&gt;
+    &lt;property&gt;
+        &lt;name&gt;fs.default.name&lt;/name&gt;
+        &lt;value&gt;hdfs://master:8020&lt;/value&gt;
+    &lt;/property&gt;
+&lt;/configuration&gt;</code></pre>
+
+    <p><b>File:</b> <code class="filename">/opt/hadoop/etc/hadoop/hdfs-site.xml</code><br>Perintah: <code>nano /opt/hadoop/etc/hadoop/hdfs-site.xml</code><br>Ganti isinya dengan:</p>
+    <pre><code>&lt;configuration&gt;
+    &lt;property&gt;
+        &lt;name&gt;dfs.namenode.name.dir&lt;/name&gt;
+        &lt;value&gt;/opt/hadoop-data/nameNode&lt;/value&gt;
+    &lt;/property&gt;
+    &lt;property&gt;
+        &lt;name&gt;dfs.datanode.data.dir&lt;/name&gt;
+        &lt;value&gt;/opt/hadoop-data/dataNode&lt;/value&gt;
+    &lt;/property&gt;
+    &lt;property&gt;
+        &lt;name&gt;dfs.replication&lt;/name&gt;
+        &lt;value&gt;2&lt;/value&gt;
+    &lt;/property&gt;
+&lt;/configuration&gt;</code></pre>
+
+    <p><b>File:</b> <code class="filename">/opt/hadoop/etc/hadoop/yarn-site.xml</code><br>Perintah: <code>nano /opt/hadoop/etc/hadoop/yarn-site.xml</code><br>Ganti isinya dengan:</p>
+    <pre><code>&lt;configuration&gt;
+    &lt;property&gt;
+        &lt;name&gt;yarn.resourcemanager.hostname&lt;/name&gt;
+        &lt;value&gt;master&lt;/value&gt;
+    &lt;/property&gt;
+    &lt;property&gt;
+        &lt;name&gt;yarn.nodemanager.aux-services&lt;/name&gt;
+        &lt;value&gt;mapreduce_shuffle&lt;/value&gt;
+    &lt;/property&gt;
+&lt;/configuration&gt;</code></pre>
+    
+    <p><b>File:</b> <code class="filename">/opt/hadoop/etc/hadoop/workers</code><br>Perintah: <code>nano /opt/hadoop/etc/hadoop/workers</code><br>Ganti isinya dengan:</p>
+    <pre><code>slave01
+slave02</code></pre>
+    
+    <h3>3.3. Konfigurasi File-File Spark</h3>
+    <p><span class="location-tag">DI PC MASTER</span></p>
+    <p><b>File:</b> <code class="filename">/opt/spark/conf/spark-env.sh</code><br>Perintah: <code>cp /opt/spark/conf/spark-env.sh.template /opt/spark/conf/spark-env.sh</code> lalu <code>nano /opt/spark/conf/spark-env.sh</code><br>Tambahkan baris ini:</p>
+    <pre><code>export SPARK_MASTER_HOST=master</code></pre>
+
+    <p><b>File:</b> <code class="filename">/opt/spark/conf/workers</code><br>Perintah: <code>cp /opt/spark/conf/workers.template /opt/spark/conf/workers</code> lalu <code>nano /opt/spark/conf/workers</code><br>Ganti isinya dengan:</p>
+    <pre><code>slave01
+slave02</code></pre>
+    
+    <h2 id="fase4">Fase 4: Propagasi Konfigurasi & Finalisasi Kluster</h2>
+    
+    <h3>4.1. Salin Konfigurasi dari Master ke Slave</h3>
+    <p><span class="location-tag">DI PC MASTER</span></p>
+    <div class="warning">Langkah ini sangat penting. Ini menyalin semua hasil kerja keras Anda di Fase 3 ke para slave.</div>
+    <pre><code># Salin konfigurasi Hadoop ke slave01 & slave02
+scp -r /opt/hadoop/etc/hadoop slave01:/opt/hadoop/etc/
+scp -r /opt/hadoop/etc/hadoop slave02:/opt/hadoop/etc/
+
+# Salin konfigurasi Spark ke slave01 & slave02
+scp -r /opt/spark/conf slave01:/opt/spark/
+scp -r /opt/spark/conf slave02:/opt/spark/</code></pre>
+
+    <h3>4.2. Penyiapan SSH Tanpa Password</h3>
+    <p><span class="location-tag">DI PC MASTER</span></p>
+    <pre><code>ssh-keygen -t rsa
+ssh-copy-id master
+ssh-copy-id slave01
+ssh-copy-id slave02</code></pre>
+
+    <h3>4.3. Format HDFS NameNode</h3>
+    <p><span class="location-tag">DI PC MASTER</span></p>
+    <div class="warning">Jalankan ini HANYA SEKALI!</div>
+    <pre><code>hdfs namenode -format</code></pre>
+
+    <h2 id="fase5">Fase 5: Prosedur Operasional (Start/Stop) & Alias</h2>
+    
+    <h3>5.1. Cara Menghidupkan Kluster</h3>
+    <p><span class="location-tag">DI PC MASTER</span></p>
+    <pre><code>/opt/hadoop/sbin/start-dfs.sh
+/opt/hadoop/sbin/start-yarn.sh
+/opt/spark/sbin/start-all.sh</code></pre>
+    
+    <h3>5.2. Cara Mematikan Kluster</h3>
+    <p><span class="location-tag">DI PC MASTER</span></p>
+    <pre><code>/opt/spark/sbin/stop-all.sh
+/opt/hadoop/sbin/stop-yarn.sh
+/opt/hadoop/sbin/stop-dfs.sh</code></pre>
+
+    <h3>5.3. Membuat Alias (Sangat Direkomendasikan)</h3>
+    <p><span class="location-tag">DI PC MASTER</span></p>
+    <p>Edit file <code class="filename">~/.bashrc</code> dan tambahkan di paling bawah:</p>
+    <pre><code>alias start-cluster='/opt/hadoop/sbin/start-dfs.sh && /opt/hadoop/sbin/start-yarn.sh && /opt/spark/sbin/start-all.sh'
+alias stop-cluster='/opt/spark/sbin/stop-all.sh && /opt/hadoop/sbin/stop-yarn.sh && /opt/hadoop/sbin/stop-dfs.sh'</code></pre>
+    <p>Jalankan <code>source ~/.bashrc</code>. Sekarang Anda bisa menggunakan <code>start-cluster</code> dan <code>stop-cluster</code>.</p>
+    
+    <hr>
+    <p style="text-align: center;">Selamat! Anda sekarang memiliki panduan paling lengkap untuk membangun kluster fisik Anda dari nol.</p>
+
+</body>
+</html>
