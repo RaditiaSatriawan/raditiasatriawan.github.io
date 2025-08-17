@@ -1,0 +1,250 @@
+<!DOCTYPE html>
+<html lang="id">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>Panduan Penyiapan Kluster Komputasi Elastis dengan K3s</title>
+    <style>
+        body {
+            font-family: 'Segoe UI', Roboto, 'Helvetica Neue', Arial, sans-serif;
+            line-height: 1.6;
+            margin: 0 auto;
+            max-width: 900px;
+            padding: 20px;
+            background-color: #f9f9f9;
+            color: #333;
+        }
+        h1, h2, h3 {
+            color: #2c3e50;
+            border-bottom: 2px solid #3498db;
+            padding-bottom: 10px;
+        }
+        h1 { font-size: 2.5em; 
+             text-align: center;
+        }
+        h2 { font-size: 2em; margin-top: 40px; }
+        h3 { font-size: 1.5em; border-bottom: none; }
+        code {
+            background-color: #ecf0f1;
+            padding: 2px 6px;
+            border-radius: 4px;
+            font-family: 'Consolas', 'Courier New', monospace;
+        }
+        pre {
+            background-color: #2c3e50;
+            color: #ecf0f1;
+            padding: 15px;
+            border-radius: 5px;
+            overflow-x: auto;
+            white-space: pre-wrap;
+            word-wrap: break-word;
+        }
+        pre code {
+            background-color: transparent;
+            padding: 0;
+        }
+        .note {
+            background-color: #e8f6fd;
+            border-left: 5px solid #3498db;
+            padding: 15px;
+            margin: 20px 0;
+        }
+        .warning {
+            background-color: #fdf3e8;
+            border-left: 5px solid #e67e22;
+            padding: 15px;
+            margin: 20px 0;
+        }
+        .filename {
+            color: #e74c3c;
+            font-weight: bold;
+        }
+        ol, ul {
+            padding-left: 20px;
+        }
+        li {
+            margin-bottom: 10px;
+        }
+        a {
+            color: #3498db;
+            text-decoration: none;
+        }
+        a:hover {
+            text-decoration: underline;
+        }
+        p {
+            text-align: center;
+        }
+    </style>
+</head>
+<body>
+
+    <h1>Panduan Penyiapan Kluster Komputasi Elastis "Plug-and-Play"</h1>
+    <p><strong>Disusun pada:</strong> Sabtu, 16 Agustus 2025, di Buleleng, Bali.</p>
+
+    <div class="note">
+        Dokumen ini adalah panduan detail untuk membangun kluster komputasi yang modern, elastis, dan lintas platform menggunakan K3s (Kubernetes versi ringan). Tujuannya adalah untuk mewujudkan sistem di mana node baru (Linux atau Windows) dapat ditambahkan ke kluster dengan mudah (prinsip "plug-and-play").
+    </div>
+
+    <h2>Daftar Isi</h2>
+    <ol>
+        <li><a href="#fase1">Fase 1: Persiapan Fondasi (Jaringan & Sistem Operasi)</a></li>
+        <li><a href="#fase2">Fase 2: Instalasi K3s (Master Node di Laptop Windows via WSL2)</a></li>
+        <li><a href="#fase3">Fase 3: Menambahkan Node Worker Linux (PC Ubuntu)</a></li>
+        <li><a href="#fase4">Fase 4: Menambahkan Node Worker Windows (Demonstrasi Plug-and-Play)</a></li>
+        <li><a href="#fase5">Fase 5: Menjalankan Aplikasi Spark Terdistribusi</a></li>
+    </ol>
+
+    <h2 id="fase1">Fase 1: Persiapan Fondasi (Jaringan & Sistem Operasi)</h2>
+    
+    <h3>1.1. Perangkat Keras & Jaringan Fisik</h3>
+    <p>Fondasi dari kluster ini adalah jaringan lokal (LAN) pribadi yang stabil. WiFi kampus tidak dapat diandalkan karena adanya fitur isolasi klien.</p>
+    <ul>
+        <li><b>Perangkat yang Dibutuhkan:</b> 1 Laptop Master, 2+ PC Worker, 1 Network Switch, Kabel LAN.</li>
+        <li><b>Koneksi:</b> Hubungkan semua komputer (laptop dan PC) ke <b>Network Switch</b> yang sama menggunakan kabel LAN. Switch ini **tidak** perlu terhubung ke internet. Ini adalah jaringan internal khusus untuk kluster.</li>
+        <li><b>Koneksi Internet:</b> Untuk mengunduh perangkat lunak, biarkan setiap mesin juga terhubung ke WiFi Undiksha Harmoni.</li>
+    </ul>
+
+    <h3>1.2. Penyiapan Sistem Operasi</h3>
+    <ol>
+        <li>
+            <b>Laptop Master (Windows):</b> Kita akan menggunakan WSL2 (Windows Subsystem for Linux) untuk menjalankan Master Node.
+            <p>Buka <b>PowerShell sebagai Administrator</b> di Windows dan jalankan perintah ini untuk menginstal WSL2 dengan Ubuntu 24.04:</p>
+            <pre><code>wsl --install -d Ubuntu-24.04</code></pre>
+            <p>Setelah selesai, buka aplikasi "Ubuntu 24.04 LTS" dari Start Menu. Anda sekarang memiliki terminal Linux yang akan menjadi Master Node kita.</p>
+        </li>
+        <li>
+            <b>PC Slave (Linux):</b> Di kedua PC fisik, instal <b>Ubuntu Desktop 24.04.3 LTS</b>. Prosesnya sama seperti yang pernah Anda lakukan di VMware.
+        </li>
+    </ol>
+
+    <h3>1.3. Konfigurasi IP Statis</h3>
+    <p>Kita akan menggunakan rentang IP <code>10.10.10.x</code> untuk jaringan kluster pribadi kita.</p>
+    <ol>
+        <li>
+            <b>Master Node (WSL2 di Laptop):</b> Menemukan alamat IP-nya.
+            <p>Buka terminal WSL2 Ubuntu Anda dan jalankan:</p>
+            <pre><code>ip a</code></pre>
+            <p>Cari antarmuka <code>eth0</code> dan catat alamat IP-nya (misalnya <code>172.21.93.120</code>). Kita akan sebut ini <code>[MASTER_IP]</code>.</p>
+        </li>
+        <li>
+            <b>Slave Node 1 (Ubuntu PC):</b> Atur IP statis menjadi <code>10.10.10.101</code>. Edit file netplan di <code class="filename">/etc/netplan/</code>.
+        </li>
+        <li>
+            <b>Slave Node 2 (Ubuntu PC):</b> Atur IP statis menjadi <code>10.10.10.102</code>.
+        </li>
+    </ol>
+    <div class="warning">
+        <b>Penting:</b> Karena master (WSL2) dan slave (PC fisik) berada di subnet jaringan yang berbeda secara default, konektivitas langsung bisa menjadi rumit. Untuk skripsi sungguhan, Anda mungkin perlu mengatur <i>port forwarding</i> atau mengkonfigurasi adaptor jaringan WSL2 ke mode <i>bridged</i>. Untuk penyederhanaan, panduan ini mengasumsikan semua PC dan laptop terhubung ke router rumah biasa (bukan switch terisolasi) di mana semua perangkat bisa saling melihat.
+    </div>
+
+    <h2 id="fase2">Fase 2: Instalasi K3s (Master Node di Laptop Windows via WSL2)</h2>
+    <p>Semua perintah di fase ini dijalankan di dalam terminal <b>WSL2 Ubuntu</b> di laptop Anda.</p>
+
+    <h3>2.1. Instalasi K3s Server</h3>
+    <pre><code>curl -sfL https://get.k3s.io | sh -s - --write-kubeconfig-mode 644</code></pre>
+    <p>Perintah ini mengunduh dan menginstal K3s secara otomatis.</p>
+    
+    <h3>2.2. Verifikasi Instalasi</h3>
+    <p>Tunggu sekitar 30 detik, lalu periksa status node. Anda perlu menggunakan <code>sudo</code> karena file konfigurasinya milik root.</p>
+    <pre><code>sudo kubectl get nodes</code></pre>
+    <p>Anda akan melihat satu node terdaftar, yaitu laptop master Anda, dengan status <code>Ready</code>.</p>
+
+    <h3>2.3. Dapatkan "Join Token"</h3>
+    <p>Ini adalah kunci rahasia agar node lain bisa bergabung dengan kluster. Dapatkan dan simpan token ini.</p>
+    <pre><code>sudo cat /var/lib/rancher/k3s/server/node-token</code></pre>
+    <p>Token akan terlihat seperti <code>K10...::server:xxxxxx</code>.</p>
+
+    <h2 id="fase3">Fase 3: Menambahkan Node Worker Linux (PC Ubuntu)</h2>
+    <p>Di **setiap PC Slave Ubuntu** (`slave01` dan `slave02`), buka terminal dan jalankan perintah di bawah ini.</p>
+
+    <h3>3.1. Instalasi K3s Agent</h3>
+    <p>Perintah ini memberitahu mesin untuk bergabung sebagai worker ke master yang sudah ada.</p>
+    <pre><code># Ganti [MASTER_IP] dan [TOKEN_ANDA] dengan nilai yang benar
+curl -sfL https://get.k3s.io | K3S_URL=https://[MASTER_IP]:6443 K3S_TOKEN="[TOKEN_ANDA]" sh -</code></pre>
+    <p>Ulangi proses ini untuk kedua PC Ubuntu.</p>
+
+    <h3>3.2. Verifikasi Koneksi</h3>
+    <p>Kembali ke terminal <b>master</b> di laptop Anda. Jalankan lagi:</p>
+    <pre><code>sudo kubectl get nodes</code></pre>
+    <p>Setelah beberapa saat, Anda akan melihat <code>slave01</code> dan <code>slave02</code> muncul dalam daftar dengan status <code>Ready</code>. Selamat, kluster Linux Anda sekarang sudah terhubung!</p>
+
+    <h2 id="fase4">Fase 4: Menambahkan Node Worker Windows (Demonstrasi Plug-and-Play)</h2>
+    <p>Ini adalah bagian di mana visi "plug-and-play" Anda terwujud.</p>
+
+    <h3>4.1. Persiapan PC Windows Worker</h3>
+    <ol>
+        <li>Hubungkan ke jaringan LAN yang sama.</li>
+        <li>Atur IP statis untuk koneksi kabelnya (misal: <code>10.10.10.103</code>).</li>
+        <li>Instal <b>Docker Desktop for Windows</b>.</li>
+    </ol>
+    
+    <h3>4.2. Bergabung dengan Kluster</h3>
+    <p>Di PC Windows, buka <b>PowerShell sebagai Administrator</b> dan jalankan perintah instalasi agen K3s untuk Windows.</p>
+    <div class="warning">
+        Dukungan K3s untuk Windows terus berkembang. Perintah di bawah ini adalah contoh prinsipnya. Selalu periksa dokumentasi resmi K3s untuk perintah instalasi Windows terbaru.
+    </div>
+    <pre><code># CONTOH - JANGAN DIJALANKAN LANGSUNG. CEK DOKUMENTASI K3S.
+# Set-ExecutionPolicy Bypass -Scope Process -Force; [System.Net.ServicePointManager]::SecurityProtocol = [System.Net.ServicePointManager]::SecurityProtocol -bor 3072; iex ((New-Object System.Net.WebClient).DownloadString('https://get.k3s.io/install.ps1')); \
+#    --url 'https://[MASTER_IP]:6443' --token '[TOKEN_ANDA]'</code></pre>
+    
+    <h3>4.3. Verifikasi Node Baru</h3>
+    <p>Kembali ke terminal <b>master</b> di laptop Anda. Jalankan:</p>
+    <pre><code>sudo kubectl get nodes -o wide</code></pre>
+    <p>Anda sekarang akan melihat node Windows baru Anda muncul dalam daftar, lengkap dengan sistem operasinya yang terdeteksi sebagai "Windows". Ini membuktikan kluster Anda lintas platform!</p>
+
+    <h2 id="fase5">Fase 5: Menjalankan Aplikasi Spark Terdistribusi</h2>
+    <p>Di Kubernetes, kita tidak lagi menjalankan skrip <code>start-cluster.sh</code>. Kita mendefinisikan aplikasi kita dalam file teks berformat YAML dan menyerahkannya ke Kubernetes.</p>
+    
+    <h3>5.1. Buat File Definisi Aplikasi Spark</h3>
+    <p>Di terminal <b>master</b>, buat file baru:</p>
+    <pre><code>nano spark-pi.yaml</code></pre>
+    <p>Salin dan tempel definisi berikut. Ini memberitahu Kubernetes untuk menjalankan aplikasi SparkPi dengan 1 driver dan 2 worker (executor).</p>
+    <pre><code>apiVersion: "sparkoperator.k8s.io/v1beta2"
+kind: SparkApplication
+metadata:
+  name: spark-pi
+  namespace: default
+spec:
+  type: Scala
+  mode: cluster
+  image: "apache/spark:3.5.1"
+  mainClass: org.apache.spark.examples.SparkPi
+  mainApplicationFile: "local:///opt/spark/examples/jars/spark-examples_2.12-3.5.1.jar"
+  sparkVersion: "3.5.1"
+  restartPolicy:
+    type: Never
+  driver:
+    cores: 1
+    memory: "512m"
+    labels:
+      version: 3.5.1
+    serviceAccount: spark
+  executor:
+    cores: 1
+    instances: 2
+    memory: "512m"
+    labels:
+      version: 3.5.1</code></pre>
+    <p><i>Catatan: Untuk menjalankan ini, Anda perlu menginstal Spark Operator di kluster Anda terlebih dahulu, yang merupakan langkah lanjutan.</i></p>
+
+    <h3>5.2. Jalankan dan Pantau Pekerjaan</h3>
+    <ol>
+        <li><b>Jalankan aplikasi:</b>
+            <pre><code>sudo kubectl apply -f spark-pi.yaml</code></pre>
+        </li>
+        <li><b>Lihat pod yang berjalan:</b>
+            <pre><code>sudo kubectl get pods</code></pre>
+            <p>Anda akan melihat pod untuk driver dan executor Spark dibuat dan berjalan di berbagai node Anda.</p>
+        </li>
+        <li><b>Lihat hasil log:</b>
+            <pre><code># Ganti [NAMA_POD_DRIVER] dengan nama pod driver Anda
+sudo kubectl logs [NAMA_POD_DRIVER]</code></pre>
+            <p>Di dalam log, Anda akan melihat hasil perhitungan Pi.</p>
+        </li>
+    </ol>
+    <div class="note">
+        <b>Demonstrasi Elastisitas:</b> Untuk skripsi Anda, Anda bisa menjalankan pekerjaan dengan 2 executor, lalu menambahkan node Windows, mengubah <code>instances: 2</code> menjadi <code>instances: 3</code> di file YAML, dan menerapkan kembali. Kubernetes akan secara otomatis menempatkan executor ketiga di node Windows yang baru bergabung.
+    </div>
+</body>
+</html>
