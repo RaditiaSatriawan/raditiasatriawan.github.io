@@ -1,0 +1,108 @@
+<!DOCTYPE html>
+<html lang="id">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>Panduan Definitif: Penyiapan Kluster Machine Learning dengan H2O.ai</title>
+    <style>
+        body { font-family: 'Segoe UI', Roboto, 'Helvetica Neue', Arial, sans-serif; line-height: 1.6; margin: 0 auto; max-width: 900px; padding: 20px; background-color: #f9f9f9; color: #333; }
+        h1, h2, h3 { color: #2c3e50; border-bottom: 2px solid #1abc9c; padding-bottom: 10px; }
+        h1 { font-size: 2.5em; text-align: center; }
+        h2 { font-size: 2em; margin-top: 40px; }
+        h3 { font-size: 1.5em; border-bottom: 1px dotted #ccc; }
+        code { color:white; background-color: #2c3e50; padding: 2px 6px; border-radius: 4px; font-family: 'Consolas', 'Courier New', monospace; font-size: 0.9em; }
+        pre { background-color: #2c3e50; color: #ecf0f1; padding: 15px; border-radius: 5px; overflow-x: auto; white-space: pre-wrap; word-wrap: break-word; }
+        .note { background-color: #e8f6fd; border-left: 5px solid #3498db; padding: 15px; margin: 20px 0; }
+        .warning { background-color: #fdf3e8; border-left: 5px solid #e67e22; padding: 15px; margin: 20px 0; }
+        .error-box { background-color: #fbeae5; border-left: 5px solid #e74c3c; padding: 1px 15px; margin: 20px 0; }
+        .filename { color: #c0392b; font-weight: bold; }
+        .location-tag { display: inline-block; background-color: #95a5a6; color: white; padding: 3px 8px; border-radius: 4px; font-size: 0.8em; margin-bottom: 10px; }
+    </style>
+</head>
+<body>
+    <h1>Panduan Definitif: Penyiapan Kluster Machine Learning dengan H2O.ai</h1>
+    <p style="text-align: center;">Dokumen ini merangkum proses penyiapan dan troubleshooting kluster fisik H2O dari nol.</p>
+    
+    <div class="note">
+        <strong>Arsitektur:</strong> PC-PC Slave menjalankan server H2O, dan PC Master bertindak murni sebagai Klien (remote control) untuk mengirimkan pekerjaan.
+    </div>
+
+    <h2>Fase 1: Persiapan Fondasi & Perangkat Lunak</h2>
+    <p>Fase ini mengasumsikan Anda sudah menyelesaikan penyiapan Jaringan & OS dari panduan Spark/Hadoop. Fondasinya sama.</p>
+    
+    <h3>1.1. Unduh dan Distribusikan H2O</h3>
+    <p><span class="location-tag">DI PC MASTER</span></p>
+    <ol>
+        <li><b>Unduh Manual:</b> Buka browser dan unduh file <code>.zip</code> H2O-3 terbaru dari <b><code>https://h2o.ai/download/</code></b>. Letakkan di folder <code>~/Downloads</code>.</li>
+        <li><b>Ekstrak:</b>
+            <pre><code>cd ~/Downloads
+unzip h2o-*.zip</code></pre>
+        </li>
+        <li><b>Distribusikan:</b> Salin folder H2O yang sudah diekstrak ke semua PC slave.
+            <pre><code># Ganti nama folder dengan versi yang Anda unduh
+scp -r ~/Downloads/h2o-3.46.0.7 slave01:~/
+# ...ulangi untuk semua slave</code></pre>
+        </li>
+    </ol>
+    <div class="error-box">
+        <h4>Troubleshooting Unduhan</h4>
+        <p><strong>Error:</strong> <code>wget</code> gagal dengan error <code>403 Forbidden</code> atau <code>404 Not Found</code>.<br><strong>Solusi:</strong> H2O tidak lagi mengizinkan unduhan langsung via <code>wget</code>. Unduh file <code>.zip</code> secara manual menggunakan browser di PC master Anda.</p>
+    </div>
+
+    <h3>1.2. Buat dan Distribusikan `flatfile`</h3>
+    <p><span class="location-tag">DI PC MASTER</span></p>
+    <p>Buat file "peta" kluster. Untuk arsitektur "master sebagai klien", kita buat file yang hanya berisi daftar slave.</p>
+    <pre><code># Buat file baru
+nano flatfile_slaves.txt
+
+# Isi dengan daftar IP dan port para slave
+10.42.0.2:54321
+10.42.0.3:54321
+10.42.0.4:54321
+10.42.0.5:54321</code></pre>
+    <p>Salin file <code>flatfile_slaves.txt</code> ini ke direktori home (`~/`) di **semua PC slave**.</p>
+    
+    <h2>Fase 2: Menghidupkan Kluster H2O (Hanya di Slave)</h2>
+    <p>Kita akan membuat skrip di master untuk memulai semua slave secara bersamaan.</p>
+    <p><span class="location-tag">DI PC MASTER</span></p>
+    <pre><code># Buat skrip baru
+nano start-h2o-slaves.sh</code></pre>
+    <p>Isi dengan kode berikut:</p>
+    <pre><code>#!/bin/bash
+H2O_DIR="~/h2o-3.46.0.7"
+H2O_MEM="4g"
+H2O_CMD="cd $H2O_DIR && java -Xmx$H2O_MEM -jar h2o.jar -flatfile ~/flatfile_slaves.txt -network 10.42.0.0/24"
+
+echo "--- Memulai H2O di semua node SLAVE..."
+ssh slave01 "$H2O_CMD" &
+ssh slave02 "$H2O_CMD" &
+ssh slave03 "$H2O_CMD" &
+ssh slave04 "$H2O_CMD" &
+echo "Kluster H2O di para slave telah dimulai."
+echo "Verifikasi di: http://10.42.0.2:54321"</code></pre>
+    <p>Jadikan eksekutable: <code>chmod +x start-h2o-slaves.sh</code>.</p>
+    
+    <div class="error-box">
+        <h4>Troubleshooting Startup H2O</h4>
+        <p><strong>Masalah:</strong> H2O Flow hanya menunjukkan 1 node, bukan kluster.<br><strong>Penyebab:</strong> Ini adalah masalah "split-brain". Solusinya: <b>1)</b> Pastikan Anda menggunakan parameter <code>-network 10.42.0.0/24</code> saat menjalankan <code>java -jar</code> untuk mengatasi masalah multi-IP di master. <b>2)</b> Pastikan file <code>flatfile.txt</code> Anda berisi **IP dan port** (<code>:54321</code>) yang benar. <b>3)</b> Gunakan skrip seperti di atas untuk memulai semua node secara hampir bersamaan agar kluster tidak "terkunci" sebelum semua anggota sempat bergabung.</p>
+    </div>
+
+    <h2>Fase 3: Pengujian (Benchmark)</h2>
+    <p>Jalankan skrip benchmark Anda dari master, pastikan skrip tersebut menunjuk ke salah satu IP slave.</p>
+    <p><span class="location-tag">DI PC MASTER</span></p>
+    <pre><code># 1. Aktifkan lingkungan conda
+conda activate pytorch_legacy
+
+# 2. Pastikan skrip Python Anda memiliki baris init yang benar:
+# h2o.init(ip="10.42.0.2", port=54321)
+
+# 3. Jalankan benchmark
+python3 benchmark_h2o_cpu.py</code></pre>
+    
+    <div class="error-box">
+        <h4>Troubleshooting Kode H2O</h4>
+        <p><strong>Error:</strong> <code>TypeError: __init__() got an unexpected keyword argument...</code><br><strong>Penyebab:</strong> Versi pustaka H2O Python di lingkungan `conda` Anda tidak cocok dengan versi server <code>h2o.jar</code>. <br><strong>Solusi:</strong> Lakukan sinkronisasi paksa. Di dalam `conda env`, jalankan <code>pip uninstall -y h2o</code>, lalu `cd ~/h2o-3.46.0.7/python` dan jalankan <code>pip install h2o*.whl</code> untuk menginstal klien Python yang versinya dijamin cocok.</p>
+        <p><strong>Error:</strong> <code>ValueError: Column ... does not exist</code> atau <code>list.remove(x): x not in list</code><br><strong>Solusi:</strong> Kesalahan logika dalam skrip. Nama kolom yang dibuat oleh <code>h2o.create_frame</code> tidak seperti yang diharapkan. Gunakan skrip diagnostik untuk mencetak nama kolom yang sebenarnya, lalu perbaiki skrip benchmark Anda.</p>
+    </div>
+</body>
+</html>

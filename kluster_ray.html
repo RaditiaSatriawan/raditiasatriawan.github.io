@@ -1,0 +1,104 @@
+<!DOCTYPE html>
+<html lang="id">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>Panduan Definitif: Penyiapan Kluster AI Modern dengan Ray.io</title>
+    <style>
+        body { font-family: 'Segoe UI', Roboto, 'Helvetica Neue', Arial, sans-serif; line-height: 1.6; margin: 0 auto; max-width: 900px; padding: 20px; background-color: #f9f9f9; color: #333; }
+        h1, h2, h3 { color: #2c3e50; border-bottom: 2px solid #007bff; padding-bottom: 10px; }
+        h1 { font-size: 2.5em; text-align: center; }
+        h2 { font-size: 2em; margin-top: 40px; }
+        h3 { font-size: 1.5em; border-bottom: 1px dotted #ccc; }
+        code { color:white; background-color: #2c3e50; padding: 2px 6px; border-radius: 4px; font-family: 'Consolas', 'Courier New', monospace; font-size: 0.9em; }
+        pre { background-color: #2c3e50; color: #ecf0f1; padding: 15px; border-radius: 5px; overflow-x: auto; white-space: pre-wrap; word-wrap: break-word; }
+        .note { background-color: #e8f6fd; border-left: 5px solid #3498db; padding: 15px; margin: 20px 0; }
+        .warning { background-color: #fdf3e8; border-left: 5px solid #e67e22; padding: 15px; margin: 20px 0; }
+        .error-box { background-color: #fbeae5; border-left: 5px solid #e74c3c; padding: 1px 15px; margin: 20px 0; }
+        .filename { color: #c0392b; font-weight: bold; }
+        .location-tag { display: inline-block; background-color: #95a5a6; color: white; padding: 3px 8px; border-radius: 4px; font-size: 0.8em; margin-bottom: 10px; }
+    </style>
+</head>
+<body>
+    <h1>Panduan Definitif: Penyiapan Kluster AI Modern dengan Ray.io</h1>
+    <p style="text-align: center;">Dokumen ini merangkum proses penyiapan dan troubleshooting kluster fisik Ray dari nol.</p>
+    
+    <div class="note">
+        <strong>Arsitektur:</strong> 1 PC Master (Ubuntu) sebagai Head Node, 4 PC Slave (Ubuntu) sebagai Worker Node, terhubung di jaringan LAN pribadi. Beberapa node memiliki GPU.
+    </div>
+
+    <h2>Fase 1: Persiapan Fondasi & Lingkungan</h2>
+    <p>Fase ini mengasumsikan Anda sudah menyelesaikan penyiapan Jaringan & OS dari panduan Spark/Hadoop. Fondasinya sama.</p>
+    
+    <h3>1.1. Atasi "Neraka Dependensi" dengan Conda</h3>
+    <p>Untuk menghindari konflik versi Python dan pustaka (terutama untuk GPU), kita menggunakan lingkungan terisolasi dengan Conda. Ini adalah praktik terbaik.</p>
+    <p><span class="location-tag">DI SEMUA PC (MASTER & SEMUA SLAVE)</span></p>
+    <ol>
+        <li><b>Instal Miniconda:</b> Unduh dan jalankan installer <code>Miniconda3-latest-Linux-x86_64.sh</code>. Saat ditanya `Do you wish the installer to initialize Miniconda3?`, jawab <b>`yes`</b>.</li>
+        <li><b>Buat Lingkungan:</b> Setelah membuka terminal baru, buat lingkungan khusus untuk ML.
+            <pre><code>conda create --name pytorch_legacy python=3.8 -y</code></pre>
+        </li>
+    </ol>
+    <div class="error-box">
+        <h4>Troubleshooting Conda</h4>
+        <p><strong>Error:</strong> <code>CondaToSNonInteractiveError</code> saat <code>conda create</code>.<br><strong>Solusi:</strong> Jalankan perintah tanpa flag <code>-y</code> (<code>conda create --name pytorch_legacy python=3.8</code>) dan jawab <code>yes</code> secara manual saat diminta persetujuan Terms of Service.</p>
+    </div>
+
+    <h2>Fase 2: Instalasi Ray & Pustaka Pendukung</h2>
+    <p>Semua instalasi `pip` harus dilakukan di dalam lingkungan `conda` yang sudah diaktifkan.</p>
+    <p><span class="location-tag">DI SEMUA PC (MASTER & SEMUA SLAVE)</span></p>
+    <pre><code># 1. Aktifkan lingkungan
+conda activate pytorch_legacy
+
+# 2. Instal Ray dengan versi spesifik untuk konsistensi
+pip install "ray[default]==2.10.0"
+
+# 3. Instal pustaka ML lainnya
+pip install -U "numpy&lt;2" # Penting untuk kompatibilitas
+pip install torch==1.7.1+cu92 torchvision==0.8.2+cu92 -f https://download.pytorch.org/whl/torch_stable.html # Untuk GPU
+pip install lightgbm scikit-learn pandas pyarrow</code></pre>
+
+    <div class="error-box">
+        <h4>Troubleshooting Instalasi Python</h4>
+        <p><strong>Error:</strong> <code>ray: command not found</code><br><strong>Solusi:</strong> Perintah Ray terinstal di <code>~/.local/bin</code> yang tidak ada di `PATH` sesi non-interaktif. Solusi terbaik adalah menambahkan <code>export PATH="$HOME/.local/bin:$PATH"</code> ke file <code>~/.profile</code> di semua mesin.</p>
+        <p><strong>Error:</strong> <code>numpy.dtype size changed</code> atau <code>numpy.core.multiarray failed to import</code><br><strong>Solusi:</strong> Terjadi konflik antara NumPy versi 2.x yang baru dengan pustaka sistem yang lama. Solusinya adalah memaksa instalasi NumPy versi 1.x dengan <code>pip install -U "numpy&lt;2"</code>.</p>
+        <p><strong>Error:</strong> <code>No matching distribution found for torch</code><br><strong>Solusi:</strong> Versi Python Anda (misal: 3.10) terlalu baru untuk versi PyTorch lama yang dibutuhkan oleh driver GPU lama Anda. Solusinya adalah dengan membuat lingkungan `conda` dengan Python versi lama (misal: 3.8) seperti yang dijelaskan di atas.</p>
+    </div>
+
+    <h2>Fase 3: Menghidupkan Kluster Ray</h2>
+    <p>Memulai kluster Ray jauh lebih sederhana daripada Spark.</p>
+    
+    <h3>3.1. Mulai Head Node</h3>
+    <p><span class="location-tag">DI PC MASTER</span></p>
+    <p>Aktifkan `conda` lalu jalankan `ray start`. Kita gunakan <code>--num-cpus=0</code> agar master hanya menjadi manajer.</p>
+    <pre><code>conda activate pytorch_legacy
+ray start --head --port=6379 --dashboard-host=0.0.0.0 --node-ip-address="10.42.0.1" --num-cpus=0</code></pre>
+    
+    <h3>3.2. Hubungkan Worker Node</h3>
+    <p><span class="location-tag">DI SETIAP PC SLAVE</span></p>
+    <p>Aktifkan `conda` lalu jalankan `ray start` dengan menunjuk ke alamat master.</p>
+    <pre><code>conda activate pytorch_legacy
+ray start --address='10.42.0.1:6379'</code></pre>
+    
+    <div class="error-box">
+        <h4>Troubleshooting Koneksi Ray</h4>
+        <p><strong>Error:</strong> Worker crash dengan error C++ <code>Failed to get internal config: RpcError</code>.<br><strong>Solusi:</strong> Ini adalah masalah komunikasi. Pastikan: <b>1)</b> Anda menggunakan IP LAN yang benar (`10.42.0.1`), bukan IP WiFi master. <b>2)</b> Anda menggunakan parameter <code>--node-ip-address</code> di head node. <b>3)</b> Versi Ray di master dan semua slave 100% identik (lakukan instalasi ulang dengan versi spesifik jika perlu).</p>
+    </div>
+
+    <h2>Fase 4: Verifikasi & Pengujian</h2>
+    
+    <h3>4.1. Verifikasi Kluster</h3>
+    <p>Buka browser dan kunjungi **Ray Dashboard** di <code>http://10.42.0.1:8265</code>. Pastikan semua node terdaftar dan sumber daya (termasuk GPU) terdeteksi dengan benar.</p>
+    
+    <h3>4.2. Pengujian (Benchmark)</h3>
+    <p>Jalankan skrip benchmark Anda (misalnya, `benchmark_brutal_ray.py`) dari master di dalam lingkungan `conda`.</p>
+    <pre><code>conda activate pytorch_legacy
+python3 benchmark_brutal_ray.py</code></pre>
+    
+    <div class="error-box">
+        <h4>Troubleshooting Benchmark Ray</h4>
+        <p><strong>Error:</strong> <code>AttributeError: 'dict' object has no attribute 'dropna'</code>.<br><strong>Solusi:</strong> Kesalahan dalam kode. `map_batches` di Ray Data memberikan data sebagai kamus Python, bukan Pandas DataFrame. Perbaiki fungsi `preprocess` Anda dengan mengubah kamus menjadi DataFrame terlebih dahulu: <code>df = pd.DataFrame.from_dict(batch)</code>.</p>
+    </div>
+    
+</body>
+</html>
